@@ -2,6 +2,7 @@ package xyz.innerweave
 
 import java.nio.file.{Files, Path, Paths}
 
+import akka.actor.Status.Failure
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
@@ -13,8 +14,9 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.io.StdIn
 import scala.util.matching.Regex
-import scala.util.{Failure, Success}
-import akka.pattern.{ask, pipe}
+import akka.pattern.{Backoff, BackoffSupervisor, ask, pipe}
+
+import scala.util.Random
 
 case object OuiUpdate
 case class OuiGet(macPrefix: Int)
@@ -91,24 +93,62 @@ class FooActor extends Actor with akka.actor.ActorLogging {
   final implicit val materializer = ActorMaterializer()
   val url = "http://localhost:8080/oui.txt"
 
+  override def postRestart(reason: Throwable) {
+    super.postRestart(reason)
+    log.info(s"Restarted because of ${reason.getMessage}")
+  }
+
+  override def preRestart(reason: Throwable, message: Option[Any]): Unit = {
+    super.preRestart(reason, message)
+    log.info(s"PreRestart because of ${reason.getMessage}")
+  }
+
+  override def preStart(): Unit = {
+    super.preStart()
+    log.info("Foo actor started")
+  }
+
+//  self ! OuiUpdate
+
   def receive = {
     case OuiUpdate =>
-      Http(context.system).singleRequest(HttpRequest(uri = url))
-      println("OuiUpdate done")
+      val f: Future[HttpResponse] = Http(context.system).singleRequest(HttpRequest(uri = url))
+      f.pipeTo(self)
+      println("OuiUpdate successful!")
+
+    case HttpResponse(status, headers, entity, protocol) =>
+      println("got response!")
+
+    case Failure(ex) =>
+      println("got exception: " + ex.getMessage)
+      throw ex
   }
 }
 
 object MacVendorApp extends App {
 
-  implicit val system = ActorSystem()
+  implicit val system = ActorSystem("MacVendor")
   implicit val materializer = ActorMaterializer()
   implicit val executionContext = system.dispatcher
   implicit val timeout = Timeout(10.seconds)
 
-//  def logFlow = Flow[String].map { s => println(s); s }
 
-  val foo = system.actorOf(Props(new FooActor), "foo")
-  foo ! OuiUpdate
+    val childProps = Props(classOf[FooActor])
+    val supervisorProps = BackoffSupervisor.props(
+      Backoff.onFailure(
+        childProps,
+        childName = "Foo1",
+        minBackoff = 2.seconds,
+        maxBackoff = 15.seconds,
+        randomFactor = 0.2))
+
+  val supervisor = system.actorOf(supervisorProps, "supervisor1")
+
+  while(true) {
+    StdIn.readLine()
+    supervisor ! OuiUpdate
+    println("update sent 1")
+  }
 
 //  val actor = system.actorOf(Props(new OuiDb))
 //  actor ! OuiUpdate
