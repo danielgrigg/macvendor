@@ -64,7 +64,8 @@ class OuiDbActor extends Actor with akka.actor.ActorLogging {
   val diskCachePath = Paths.get("oui.csv")
   val ouiRegex = """([a-zA-Z0-9]+)[\s\t]*\(base 16\)[\s\t]*(.*)""".r
   val diskCacheRegex = """(.*)\t(.*)""".r
-  val sourceUrl = "http://localhost:8080/oui.txt"
+//  val sourceUrl = "http://localhost:8080/oui.txt"
+  val sourceUrl = "http://standards-oui.ieee.org/oui.txt"
 
   def cacheOuiDbToMemory() = {
     FileIO.fromPath(diskCachePath)
@@ -104,7 +105,7 @@ class OuiDbActor extends Actor with akka.actor.ActorLogging {
     */
   def refreshDue: Boolean = {
     val oneWeekMillis = 7L * 24L * 3600L * 1000L
-    val ageMillis = DateTime.now.clicks - Files.getLastModifiedTime(diskCachePath).toMillis
+    lazy val ageMillis = DateTime.now.clicks - Files.getLastModifiedTime(diskCachePath).toMillis
     !Files.exists(diskCachePath) || ageMillis > oneWeekMillis
   }
 

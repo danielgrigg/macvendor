@@ -40,18 +40,21 @@ object MacVendorApp extends App {
       path("vendor") {
         get {
           parameters('prefix.as[String]) { (prefixLike) =>
-            val prefix = parseVendorPrefix(prefixLike)
+            val prefix: Option[Int] = parseVendorPrefix(prefixLike)
             validate(prefix.isDefined,
-              "prefix must be a hexadecimal vendor prefix with an optional ':' delimiter, eg AA:BB:CC or AABBCC112233.")
-            complete {
-              supervisor
-                .ask(OuiGet(prefix.get))
-                .mapTo[OuiGetResponse]
-                .map(_.vendor)
+              "prefix must be a hexadecimal vendor prefix with an optional ':' delimiter, eg AA:BB:CC or AABBCC112233.") {
+              complete {
+                supervisor
+                  .ask(OuiGet(prefix.get))
+                  .mapTo[OuiGetResponse]
+                  .map(_.vendor)
+              }
             }
           }
         }
-      }
+      } ~
+      // Some basic service discovery
+        complete("Try /vendor?prefix=$prefix")
     }
 
   val config = ConfigFactory.load()
