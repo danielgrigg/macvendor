@@ -11,6 +11,7 @@ import com.typesafe.config.ConfigFactory
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.util.Try
 
 object MacVendorApp extends App {
 
@@ -35,15 +36,19 @@ object MacVendorApp extends App {
   val supervisor = system.actorOf(supervisorProps, "supervisor")
 
   val route: Route =
-    path("vendor") {
-      get {
-        parameters('mac.as[String]) { (macStr) =>
-          val mac = Integer.parseUnsignedInt(macStr.replaceAll("[:-]", ""), 16)
-          onSuccess(supervisor.ask(OuiGet(mac))) {
-            case OuiGetResponse(Some(vendor)) =>
-              complete(s"""{"vendor":"$vendor"}""")
-            case OuiGetResponse(None) =>  ???
-            case _ => ???
+    rejectEmptyResponse {
+      path("vendor") {
+        get {
+          parameters('prefix.as[String]) { (prefixLike) =>
+            val prefix = parseVendorPrefix(prefixLike)
+            validate(prefix.isDefined,
+              "prefix must be a hexadecimal vendor prefix with an optional ':' delimiter, eg AA:BB:CC or AABBCC112233.")
+            complete {
+              supervisor
+                .ask(OuiGet(prefix.get))
+                .mapTo[OuiGetResponse]
+                .map(_.vendor)
+            }
           }
         }
       }
@@ -58,6 +63,11 @@ object MacVendorApp extends App {
     case scala.util.Failure(ex) =>
       println(s"Failed to bind to $iface:$port: ${ex.getMessage}")
       finish()
+  }
+
+  // Extract the vendor from a mac-like string, eg aa:bb:cc or aabbccddeeff
+  def parseVendorPrefix(macLike: String): Option[Int] = {
+    Try(Integer.parseInt(macLike.filterNot(_ == ':').take(6), 16)).toOption
   }
 
   def finish() = {
