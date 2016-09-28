@@ -55,7 +55,10 @@ class OuiDbActor extends Actor with akka.actor.ActorLogging {
       // Re-throw any Failure updating the db
     case Failure(ex) => throw ex
 
-    case OuiUpdateResult(newCache) => cache = newCache
+    case OuiUpdateResult(newCache) => {
+      log.info("Oui cache updated")
+      cache = newCache
+    }
 
     case OuiGet(prefix) => sender() ! OuiGetResponse(cache.get(prefix))
   }
@@ -64,7 +67,6 @@ class OuiDbActor extends Actor with akka.actor.ActorLogging {
   val diskCachePath = Paths.get("oui.csv")
   val ouiRegex = """([a-zA-Z0-9]+)[\s\t]*\(base 16\)[\s\t]*(.*)""".r
   val diskCacheRegex = """(.*)\t(.*)""".r
-//  val sourceUrl = "http://localhost:8080/oui.txt"
   val sourceUrl = "http://standards-oui.ieee.org/oui.txt"
 
   def cacheOuiDbToMemory() = {

@@ -12,6 +12,7 @@ import com.typesafe.config.ConfigFactory
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.util.Try
+import akka.event.Logging
 
 object MacVendorApp extends App {
 
@@ -19,6 +20,8 @@ object MacVendorApp extends App {
   implicit val materializer = ActorMaterializer()
   implicit val executionContext = system.dispatcher
   implicit val timeout = Timeout(1.seconds)
+
+  val log = Logging.getLogger(system, this)
 
   scala.sys.addShutdownHook {
     finish()
@@ -62,9 +65,9 @@ object MacVendorApp extends App {
 
   Http().bindAndHandle(route, iface, port).onComplete {
     case scala.util.Success(binding) =>
-      println(s"Server online at $iface:$port")
+      log.info(s"Server online at $iface:$port")
     case scala.util.Failure(ex) =>
-      println(s"Failed to bind to $iface:$port: ${ex.getMessage}")
+      log.error(s"Failed to bind to $iface:$port: ${ex.getMessage}")
       finish()
   }
 
@@ -74,9 +77,9 @@ object MacVendorApp extends App {
   }
 
   def finish() = {
-    println("Shutting down")
+    log.info("Application shutting down")
     system.terminate()
     Await.result(system.whenTerminated, 30.seconds)
-    println("Terminated")
+    log.info("Application Terminated")
   }
 }
