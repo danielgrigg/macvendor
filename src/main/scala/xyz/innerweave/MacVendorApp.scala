@@ -19,7 +19,7 @@ object MacVendorApp extends App {
   implicit val system = ActorSystem("MacVendor")
   implicit val materializer = ActorMaterializer()
   implicit val executionContext = system.dispatcher
-  implicit val timeout = Timeout(1.seconds)
+  implicit val timeout = Timeout(3.seconds)
 
   val log = Logging.getLogger(system, this)
 
@@ -27,16 +27,7 @@ object MacVendorApp extends App {
     finish()
   }
 
-  val childProps = Props(classOf[OuiDbActor])
-  val supervisorProps = BackoffSupervisor.props(
-    Backoff.onFailure(
-      childProps,
-      childName = "OuiDb",
-      minBackoff = 3.seconds,
-      maxBackoff = 1.hour,
-      randomFactor = 0.2))
-
-  val supervisor = system.actorOf(supervisorProps, "supervisor")
+  val supervisor = system.actorOf(Props(classOf[OuiActor]), "OuiActor")
 
   val route: Route =
     rejectEmptyResponse {

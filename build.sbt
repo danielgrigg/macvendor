@@ -1,6 +1,6 @@
 name := "macvendor"
 
-version := "1.0"
+version := "0.1.0"
 
 scalaVersion := "2.11.8"
 
@@ -23,3 +23,20 @@ libraryDependencies ++= {
     "org.scalatest"     %% "scalatest"                            % scalaTestV % "test"
   )
 }
+
+enablePlugins(DockerPlugin)
+
+dockerfile in docker := {
+
+  val artifact: File = assembly.value
+  val artifactTargetPath = s"/app/${artifact.name}"
+
+  new Dockerfile {
+    from("java")
+    add(artifact, artifactTargetPath)
+    entryPoint("java", "-jar", artifactTargetPath)
+  }
+}
+
+buildOptions in docker := BuildOptions(cache = false)
+
