@@ -1,10 +1,12 @@
 package xyz.innerweave
 
 import akka.actor.{ActorSystem, Props}
+import akka.event.Logging
 import akka.http.scaladsl.Http
+import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import akka.pattern.{Backoff, BackoffSupervisor, ask}
+import akka.pattern.ask
 import akka.stream.ActorMaterializer
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
@@ -12,7 +14,6 @@ import com.typesafe.config.ConfigFactory
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.util.Try
-import akka.event.Logging
 
 object MacVendorApp extends App {
 
@@ -30,26 +31,29 @@ object MacVendorApp extends App {
   val supervisor = system.actorOf(Props(classOf[OuiActor]), "OuiActor")
 
   val route: Route =
-    rejectEmptyResponse {
-      path("vendor") {
-        get {
-          parameters('prefix.as[String]) { (prefixLike) =>
-            val prefix: Option[Int] = parseVendorPrefix(prefixLike)
-            validate(prefix.isDefined,
-              "prefix must be a hexadecimal vendor prefix with an optional ':' delimiter, eg AA:BB:CC or AABBCC112233.") {
-              complete {
-                supervisor
-                  .ask(OuiGet(prefix.get))
-                  .mapTo[OuiGetResponse]
-                  .map(_.vendor)
-              }
+    path("vendor") {
+      get {
+        parameters('prefix.as[String]) { (prefixLike) =>
+          val prefix: Option[Int] = parseVendorPrefix(prefixLike)
+          validate(prefix.isDefined,
+            "prefix must be a hexadecimal vendor prefix with an optional ':' delimiter, eg AA:BB:CC or AABBCC112233.") {
+            complete {
+              supervisor
+                .ask(OuiGet(prefix.get))
+                .mapTo[OuiGetResponse]
+                .map {
+                  case OuiGetNotReady =>
+                    StatusCodes.ServiceUnavailable -> "Not ready, try again later."
+                  case OuiGetOk(Some(vendor)) =>
+                    StatusCodes.OK -> vendor
+                  case _ => StatusCodes.NotFound -> ""
+                }
             }
           }
         }
-      } ~
-      // Some basic service discovery
-        complete("Try /vendor?prefix=$prefix")
-    }
+      }
+    } ~ // Some basic service discovery
+      complete("Try /vendor?prefix=$prefix")
 
   val config = ConfigFactory.load()
   val (iface, port) = (config.getString("http.interface"), config.getInt("http.port"))

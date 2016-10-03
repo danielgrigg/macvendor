@@ -2,6 +2,8 @@ name := "macvendor"
 
 version := "0.1.0"
 
+organization := "danielgrigg"
+
 scalaVersion := "2.11.8"
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8")
@@ -35,6 +37,8 @@ dockerfile in docker := {
     from("java")
     add(artifact, artifactTargetPath)
     entryPoint("java", "-jar", artifactTargetPath)
+		expose(8080)
+    copy(baseDirectory.value / "oui.csv", "/")
   }
 }
 

@@ -3,7 +3,6 @@ package xyz.innerweave
 import java.nio.file.{Files, Path, Paths}
 
 import akka.actor.Actor
-import akka.actor.Status.Failure
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
 import akka.pattern.pipe
@@ -13,17 +12,34 @@ import akka.util.ByteString
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
+import scala.util.Success
 
 
 /**
   * Request a refresh of the mac-vendor database
   */
-case object OuiUpdate
+case object OuiDbUpdate
 
 /**
-  * A refreshed cache
+  * Load the cached db
   */
-case class OuiUpdateResult(cache: Map[Int, String])
+case object OuiDbLoad
+
+/**
+  * Database is current
+  *
+  * Sent in response to an OuiDbUpdate request.  Signals that the current
+  * cached db is valid.
+  */
+case object OuiDbCurrent
+
+/**
+  * A mac-vendor db
+  *
+  * Sent in response to OuiDbLoad and OuiDbUpdate requests.  Contains
+  * all mac to vendor assocations.
+  */
+case class OuiDb(cache: Map[Int, String])
 
 /**
   * Maintains an associative cache of MAC vendor prefixes
@@ -39,16 +55,19 @@ class OuiDbActor(diskCacheExpiry: Duration) extends Actor with akka.actor.ActorL
   final implicit val materializer = ActorMaterializer()(context)
 
   def receive = {
-    case OuiUpdate =>
-      val updateResultFuture = for {
-        _ <- if (diskCacheExpired) cacheOuiDbToDisk() else Future.successful(true)
-        newCache <- cacheOuiDbToMemory()
-      } yield OuiUpdateResult(newCache)
-      updateResultFuture.pipeTo(sender)
+    case OuiDbUpdate =>
+      if (diskCacheExpired) {
+        cacheOuiDbToDisk().flatMap{
+          _.status match {
+            case Success(_) => cacheOuiDbToMemory()
+            case util.Failure(ex) => Future.failed(ex)
+          }
+        }.pipeTo(sender)
+      } else {
+        sender ! OuiDbCurrent
+      }
 
-    // Re-throw any Failure updating the db
-    case Failure(ex) => throw ex
-
+    case OuiDbLoad => cacheOuiDbToMemory().pipeTo(sender)
   }
 
   final val DiskCachePath = Paths.get("oui.csv")
@@ -69,9 +88,10 @@ class OuiDbActor(diskCacheExpiry: Duration) extends Actor with akka.actor.ActorL
             acc + (mac -> vendor)
         }
       }
+      .map(OuiDb)
   }
 
-  def cacheOuiDbToDisk(): Future[Boolean] = {
+  def cacheOuiDbToDisk(): Future[IOResult] = {
     log.info("Caching db to disk")
     Http(context.system).singleRequest(HttpRequest(uri = SourceUrl))
       .flatMap(r =>
@@ -83,9 +103,7 @@ class OuiDbActor(diskCacheExpiry: Duration) extends Actor with akka.actor.ActorL
             case None => ""
           })
           .runWith(lineSink(DiskCachePath))
-      ).map {
-      _.wasSuccessful
-    }
+      )
   }
 
   def lineSink(path: Path): Sink[String, Future[IOResult]] =
