@@ -2,17 +2,19 @@ package xyz.innerweave
 
 import java.nio.file.{Files, Path, Paths}
 
+import akka.NotUsed
 import akka.actor.Actor
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
 import akka.pattern.pipe
 import akka.stream.scaladsl.{FileIO, Flow, Framing, Keep, Sink}
-import akka.stream.{ActorMaterializer, IOResult}
+import akka.stream.{ActorMaterializer, IOResult, Materializer}
 import akka.util.ByteString
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.Success
+import scala.util.matching.Regex
 
 
 /**
@@ -52,12 +54,12 @@ class OuiDbActor(diskCacheExpiry: Duration) extends Actor with akka.actor.ActorL
 
   import context._
 
-  final implicit val materializer = ActorMaterializer()(context)
+  final implicit val materializer: ActorMaterializer = ActorMaterializer()(context)
 
-  def receive = {
+  def receive: PartialFunction[Any, Unit] = {
     case OuiDbUpdate =>
       if (diskCacheExpired) {
-        cacheOuiDbToDisk().flatMap{
+        cacheOuiDbToDisk().flatMap {
           _.status match {
             case Success(_) => cacheOuiDbToMemory()
             case util.Failure(ex) => Future.failed(ex)
@@ -70,38 +72,24 @@ class OuiDbActor(diskCacheExpiry: Duration) extends Actor with akka.actor.ActorL
     case OuiDbLoad => cacheOuiDbToMemory().pipeTo(sender)
   }
 
-  final val DiskCachePath = Paths.get("oui.csv")
-  final val OuiRegex = """([a-zA-Z0-9]+)[\s\t]*\(base 16\)[\s\t]*(.*)""".r
-  final val DiskCacheRegex = """(.*)\t(.*)""".r
+  final val DiskCachePath: Path = Paths.get("oui.csv")
   final val SourceUrl = "http://standards-oui.ieee.org/oui.txt"
 
-  def cacheOuiDbToMemory() = {
+  // Cache our compact csv oui db into memory
+  def cacheOuiDbToMemory(): Future[OuiDb] = {
     log.info("Caching disk db to memory")
     FileIO.fromPath(DiskCachePath)
-      .via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 1024, allowTruncation = true))
-      .map(_.utf8String)
-      .runFold(Map[Int, String]()) { case (acc, s) =>
-        DiskCacheRegex.findFirstIn(s) match {
-          case None => acc
-          case Some(DiskCacheRegex(macStr, vendor)) =>
-            val mac = Integer.parseUnsignedInt(macStr, 16)
-            acc + (mac -> vendor)
-        }
-      }
+      .runWith(OuiDbActor.cacheMemorySink)
       .map(OuiDb)
   }
 
+  // Cache an ieee oui db to disk
   def cacheOuiDbToDisk(): Future[IOResult] = {
     log.info("Caching db to disk")
     Http(context.system).singleRequest(HttpRequest(uri = SourceUrl))
       .flatMap(r =>
         r.entity.dataBytes
-          .via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 1024, allowTruncation = true))
-          .map(_.utf8String)
-          .map(s => OuiRegex.findFirstMatchIn(s) match {
-            case Some(OuiRegex(prefix, fullName)) => s"$prefix\t$fullName\n"
-            case None => ""
-          })
+          .via(OuiDbActor.ouiLineFlow)
           .runWith(lineSink(DiskCachePath))
       )
   }
@@ -114,6 +102,39 @@ class OuiDbActor(diskCacheExpiry: Duration) extends Actor with akka.actor.ActorL
   def diskCacheExpired: Boolean = {
     lazy val ageMillis = DateTime.now.clicks - Files.getLastModifiedTime(DiskCachePath).toMillis
     !Files.exists(DiskCachePath) || ageMillis > diskCacheExpiry.toMillis
+  }
+}
+
+
+// Separate out the functional components - really just to demonstrate
+// testing flows/sinks/sources.
+object OuiDbActor {
+
+  type MacVendors = Map[Int, String]
+  final val DiskCacheRegex: Regex = """([a-fA-F0-9]+)\t(.*)""".r
+  final val OuiRegex: Regex = """([a-fA-F0-9]+)[\s\t]*\(base 16\)[\s\t]*(.*)""".r
+
+  // Sink a stream of csv oui-cache data into a Map of vendor-prefixes to vendors.
+  def cacheMemorySink(implicit materializer: Materializer): Sink[ByteString, Future[MacVendors]] = {
+    Framing.delimiter(ByteString("\n"), maximumFrameLength = 1024, allowTruncation = true)
+      .map(_.utf8String)
+      .map {
+        case DiskCacheRegex(macS, vendor) => Some(Integer.parseInt(macS, 16) -> vendor)
+        case _ => None
+      }
+      .mapConcat(o => o.toList) // Just ignore unparseable elements
+      .toMat(Sink.fold(Map.empty[Int, String])(_ + _))(Keep.right)
+  }
+
+  // Transform a stream of byte strings representing a single line of the ieee oui database
+  // into a stream of vendor-prefix and vendor-name pairs, encoded as tab-delimited strings.
+  def ouiLineFlow(implicit materializer: Materializer): Flow[ByteString, String, NotUsed] = {
+    Framing.delimiter(ByteString("\n"), maximumFrameLength = 1024, allowTruncation = true)
+      .map(_.utf8String)
+      .map {
+        case OuiRegex(prefix, fullName) => s"$prefix\t$fullName\n"
+        case _ => "" // Just drop unparseables
+      }
   }
 }
 
