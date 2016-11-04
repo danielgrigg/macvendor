@@ -72,7 +72,10 @@ class OuiActor extends Actor with ActorLogging {
 
   var cache: Map[Int, String] = Map.empty
 
-  val childProps = Props(new OuiDbActor(DiskCacheExpiry))
+
+  final val SourceUrl = "http://standards-oui.ieee.org/oui.txt"
+
+  val childProps = Props(new OuiDbActor(DiskCacheExpiry, SourceUrl))
   val supervisorProps = BackoffSupervisor.props(
     Backoff.onFailure(
       childProps,

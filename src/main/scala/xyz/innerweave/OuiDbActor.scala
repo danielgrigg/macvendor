@@ -50,7 +50,9 @@ case class OuiDb(cache: Map[Int, String])
   * The cache refreshes itself periodically after
   * a short initial delay.
   */
-class OuiDbActor(diskCacheExpiry: Duration) extends Actor with akka.actor.ActorLogging {
+class OuiDbActor(sourceUrl: String,
+                 diskCacheExpiry: Duration = 7.days,
+                 diskCacheFolder: String = ".") extends Actor with akka.actor.ActorLogging {
 
   import context._
 
@@ -61,8 +63,12 @@ class OuiDbActor(diskCacheExpiry: Duration) extends Actor with akka.actor.ActorL
       if (diskCacheExpired) {
         cacheOuiDbToDisk().flatMap {
           _.status match {
-            case Success(_) => cacheOuiDbToMemory()
-            case util.Failure(ex) => Future.failed(ex)
+            case Success(_) =>
+              println("got db, caching")
+              cacheOuiDbToMemory()
+            case util.Failure(ex) =>
+              println("failed getting db")
+              Future.failed(ex)
           }
         }.pipeTo(sender)
       } else {
@@ -72,8 +78,7 @@ class OuiDbActor(diskCacheExpiry: Duration) extends Actor with akka.actor.ActorL
     case OuiDbLoad => cacheOuiDbToMemory().pipeTo(sender)
   }
 
-  final val DiskCachePath: Path = Paths.get("oui.csv")
-  final val SourceUrl = "http://standards-oui.ieee.org/oui.txt"
+  final val DiskCachePath: Path = Paths.get(diskCacheFolder + "/oui.csv")
 
   // Cache our compact csv oui db into memory
   def cacheOuiDbToMemory(): Future[OuiDb] = {
@@ -86,7 +91,7 @@ class OuiDbActor(diskCacheExpiry: Duration) extends Actor with akka.actor.ActorL
   // Cache an ieee oui db to disk
   def cacheOuiDbToDisk(): Future[IOResult] = {
     log.info("Caching db to disk")
-    Http(context.system).singleRequest(HttpRequest(uri = SourceUrl))
+    Http(context.system).singleRequest(HttpRequest(uri = sourceUrl))
       .flatMap(r =>
         r.entity.dataBytes
           .via(OuiDbActor.ouiLineFlow)
