@@ -5,6 +5,7 @@ import java.nio.file.{Files, Path, Paths}
 import akka.NotUsed
 import akka.actor.Actor
 import akka.http.scaladsl.Http
+import akka.http.scaladsl.coding.Gzip
 import akka.http.scaladsl.model._
 import akka.pattern.pipe
 import akka.stream.scaladsl.{FileIO, Flow, Framing, Keep, Sink}
@@ -92,11 +93,12 @@ class OuiDbActor(sourceUrl: String,
   def cacheOuiDbToDisk(): Future[IOResult] = {
     log.info("Caching db to disk")
     Http(context.system).singleRequest(HttpRequest(uri = sourceUrl))
-      .flatMap(r =>
+      .flatMap { r =>
         r.entity.dataBytes
+          .via(Gzip.decoderFlow)
           .via(OuiDbActor.ouiLineFlow)
           .runWith(lineSink(DiskCachePath))
-      )
+      }
   }
 
   def lineSink(path: Path): Sink[String, Future[IOResult]] =
