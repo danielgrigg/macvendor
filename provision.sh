@@ -17,7 +17,9 @@ machineName="macvendor-$domainName"
 
 docker-machine create --driver digitalocean --digitalocean-access-token $digitaloceanAccessToken --digitalocean-image=debian-8-x64 --digitalocean-region="$region" --digitalocean-size=512mb "$machineName"
 
-machineIp=$(docker-machine ip $machineName)
+machineIp=$(docker-machine ip "$machineName")
+
+eval $(docker-machine env "$machineName")
 
 curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $digitaloceanAccessToken" -d "{\"name\":\"$domainName\",\"ip_address\":\"$machineIp\"}" "https://api.digitalocean.com/v2/domains"
 echo
