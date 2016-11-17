@@ -6,21 +6,23 @@ import akka.http.scaladsl.model.DateTime
 import akka.pattern.{Backoff, BackoffSupervisor}
 
 import scala.concurrent.duration._
-import scala.util
-import scala.util.Success
 
 /**
   * Request the vendor name for a mac prefix
+  *
   * @param macPrefix a 3B vendor prefix, eg 0xAABBCC
   */
 case class OuiGet(macPrefix: Int)
 
 sealed trait OuiGetResponse
+
 /**
   * The vendor name for a corresponding OuiGet request.
+  *
   * @param vendor the Oui name
   */
 case class OuiGetOk(vendor: Option[String]) extends OuiGetResponse
+
 case object OuiGetNotReady extends OuiGetResponse
 
 class OuiActor extends Actor with ActorLogging {
@@ -75,7 +77,7 @@ class OuiActor extends Actor with ActorLogging {
 
   final val SourceUrl = "http://linuxnet.ca/ieee/oui.txt.gz"
 
-  val childProps = Props(new OuiDbActor(SourceUrl, DiskCacheExpiry))
+  val childProps = Props(new OuiDbActor(SourceUrl, DiskCacheExpiry, "."))
   val supervisorProps = BackoffSupervisor.props(
     Backoff.onFailure(
       childProps,

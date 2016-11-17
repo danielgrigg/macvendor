@@ -1,0 +1,12 @@
+nginx:
+  build: ./nginx
+  links:
+    - macvendor1:macvendor1
+  ports:
+    - "80:80"
+    - "443:443"
+  environment:
+    - domainName
+macvendor1:
+  image: danielgrigg/macvendor
+

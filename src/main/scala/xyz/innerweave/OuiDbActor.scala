@@ -92,6 +92,8 @@ class OuiDbActor(sourceUrl: String,
   // Cache an ieee oui db to disk
   def cacheOuiDbToDisk(): Future[IOResult] = {
     log.info("Caching db to disk")
+    Files.createFile(DiskCachePath)
+
     Http(context.system).singleRequest(HttpRequest(uri = sourceUrl))
       .flatMap { r =>
         r.entity.dataBytes
