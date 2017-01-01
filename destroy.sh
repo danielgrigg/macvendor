@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 
-if [[ -z $digitaloceanAccessToken ]]; then
-  echo "Usage: provision.sh <digitalocean-access-token> <domain-name>"
+function exitWithUsage {
+  echo "Usage: ./destroy.sh <param-file>"
   exit 1
-fi
-if [[ -z $domainName ]]; then
-  echo "Usage: provision.sh <digitalocean-access-token> <domain-name>"
-  exit 1
-fi
+}
+
+paramFile="$1"
+[[ -f "$paramFile" ]] || { echo "Param file missing."; exitWithUsage; }
+. "$paramFile"
+
+[[ -n $digitaloceanAccessToken ]] || { echo "digitaloceanAccessToken not set in $paramFile"; exitWithUsage; }
+[[ -n $domainName ]] || { echo "domainName not set in $paramFile"; exitWithUsage; }
 
 machineName="macvendor-$domainName"
 

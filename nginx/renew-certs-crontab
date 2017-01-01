@@ -1,0 +1,2 @@
+0 0 1 * * root /renew-certs.sh  >> /var/log/cron.log 2>&1
+

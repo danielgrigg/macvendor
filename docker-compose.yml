@@ -7,6 +7,7 @@ nginx:
     - "443:443"
   environment:
     - domainName
+    - contactEmail
 macvendor1:
   image: danielgrigg/macvendor
 
