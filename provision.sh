@@ -5,6 +5,10 @@ function exitWithUsage {
   exit 1
 }
 
+command -v docker-machine >/dev/null 2>&1 || { echo >&2 "I require docker-machine but it's not installed.  Aborting."; exit 1; }
+command -v docker-compose >/dev/null 2>&1 || { echo >&2 "I require docker-compose but it's not installed.  Aborting."; exit 1; }
+command -v curl >/dev/null 2>&1 || { echo >&2 "I require curl but it's not installed.  Aborting."; exit 1; }
+
 paramFile="$1"
 [[ -f "$paramFile" ]] || { echo "Param file missing."; exitWithUsage; }
 . "$paramFile"
@@ -28,10 +32,8 @@ machineIp=$(docker-machine ip "$machineName")
 
 eval $(docker-machine env "$machineName")
 
-echo "Adding DNS for $machineName to $machineIp"
+echo "Adding DNS records for $machineName to $machineIp"
 curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $digitaloceanAccessToken" -d "{\"name\":\"$domainName\",\"ip_address\":\"$machineIp\"}" "https://api.digitalocean.com/v2/domains"; echo
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $digitaloceanAccessToken" -d "{\"type\":\"A\",\"name\":\"@\",\"data\":\"$machineIp\",\"priority\":null,\"port\":null,\"weight\":null}" "https://api.digitalocean.com/v2/domains/$domainName/records"; echo
 curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $digitaloceanAccessToken" -d "{\"name\":\"www.$domainName\",\"ip_address\":\"$machineIp\"}" "https://api.digitalocean.com/v2/domains"; echo
-curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $digitaloceanAccessToken" -d "{\"type\":\"A\",\"name\":\"@\",\"data\":\"$machineIp\",\"priority\":null,\"port\":null,\"weight\":null}" "https://api.digitalocean.com/v2/domains/www.$domainName/records"; echo
 
 docker-compose up -d

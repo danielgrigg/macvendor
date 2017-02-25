@@ -45,11 +45,14 @@ case object OuiDbCurrent
 case class OuiDb(cache: Map[Int, String])
 
 /**
-  * Maintains an associative cache of MAC vendor prefixes
-  * to vendor names.
+  * Maintains an association of MAC vendor prefixes to vendor names.
   *
-  * The cache refreshes itself periodically after
-  * a short initial delay.
+  * The OuiDbActor separates out the behaviour of the actual database queries
+  * from the MacVendor service to ensure the service can remain partially
+  * available in the event of communication failures with a data store. This
+  * is a demonstration of the error kernel pattern.
+  *
+  * The db refreshes itself periodically after a short initial delay.
   */
 class OuiDbActor(sourceUrl: String,
                  diskCacheExpiry: Duration = 7.days,

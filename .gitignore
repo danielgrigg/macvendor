@@ -90,3 +90,6 @@ project/
 src/main/java/
 src/main/scala-2.11/
 src/test/
+
+# environment specific variable exports for provision script
+.env*

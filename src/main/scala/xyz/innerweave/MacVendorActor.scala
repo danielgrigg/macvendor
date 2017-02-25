@@ -12,20 +12,33 @@ import scala.concurrent.duration._
   *
   * @param macPrefix a 3B vendor prefix, eg 0xAABBCC
   */
-case class OuiGet(macPrefix: Int)
+case class VendorGet(macPrefix: Int)
 
-sealed trait OuiGetResponse
+sealed trait VendorGetResponse
 
 /**
-  * The vendor name for a corresponding OuiGet request.
+  * The vendor name for a corresponding VendorGet request.
   *
   * @param vendor the Oui name
   */
-case class OuiGetOk(vendor: Option[String]) extends OuiGetResponse
+case class VendorGetOk(vendor: Option[String]) extends VendorGetResponse
 
-case object OuiGetNotReady extends OuiGetResponse
+case object VendorGetNotReady extends VendorGetResponse
 
-class OuiActor extends Actor with ActorLogging {
+/**
+  * The main behaviour of the MacVendor service.
+  *
+  * MacVendorActor is responsible for answering queries
+  * on the vendor associated with a MAC address.
+  *
+  * Queries are performed by sending an VendorGet message a MAC prefix.
+  * Responses are returned in a VendorGetResponse.
+  *
+  * The actor has two states, running and resuming.  In a running state
+  * queries are processed normally.  In a resuming state, the service is
+  * considered unavailable and queries will be gracefully rejected.
+  */
+class MacVendorActor extends Actor with ActorLogging {
 
   import context._
 
@@ -38,7 +51,7 @@ class OuiActor extends Actor with ActorLogging {
   }
 
   def resuming: Receive = {
-    case OuiGet(prefix) => sender() ! OuiGetNotReady
+    case VendorGet(prefix) => sender() ! VendorGetNotReady
 
     case OuiDb(newCache) =>
       cache = newCache
@@ -54,7 +67,7 @@ class OuiActor extends Actor with ActorLogging {
   }
 
   def running: Receive = {
-    case OuiGet(prefix) => sender() ! OuiGetOk(cache.get(prefix))
+    case VendorGet(prefix) => sender() ! VendorGetOk(cache.get(prefix))
 
     case OuiDb(newCache) =>
       cache = newCache
@@ -73,7 +86,6 @@ class OuiActor extends Actor with ActorLogging {
   def receive = resuming
 
   var cache: Map[Int, String] = Map.empty
-
 
   final val SourceUrl = "http://linuxnet.ca/ieee/oui.txt.gz"
 

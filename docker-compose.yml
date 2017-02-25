@@ -1,5 +1,5 @@
 nginx:
-  build: ./nginx
+  build: danielgrigg/macvendor-nginx
   links:
     - macvendor1:macvendor1
   ports:

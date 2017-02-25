@@ -28,7 +28,7 @@ object MacVendorApp extends App {
     finish()
   }
 
-  val supervisor = system.actorOf(Props(classOf[OuiActor]), "OuiActor")
+  val supervisor = system.actorOf(Props(classOf[MacVendorActor]), "MacVendorActor")
 
   val route: Route =
     path("vendor") {
@@ -39,12 +39,12 @@ object MacVendorApp extends App {
             "prefix must be a hexadecimal vendor prefix with an optional ':' delimiter, eg AA:BB:CC or AABBCC112233.") {
             complete {
               supervisor
-                .ask(OuiGet(prefix.get))
-                .mapTo[OuiGetResponse]
+                .ask(VendorGet(prefix.get))
+                .mapTo[VendorGetResponse]
                 .map {
-                  case OuiGetNotReady =>
+                  case VendorGetNotReady =>
                     StatusCodes.ServiceUnavailable -> "Not ready, try again later."
-                  case OuiGetOk(Some(vendor)) =>
+                  case VendorGetOk(Some(vendor)) =>
                     StatusCodes.OK -> vendor
                   case _ => StatusCodes.NotFound -> ""
                 }
